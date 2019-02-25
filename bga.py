@@ -1,105 +1,139 @@
 """
 Chromosomes : Intial
-Ranked: Chromosomes sorted by weight + weights
-Selected: Top n_keep chromosomes + weights
+Ranked: Chromosomes sorted by weight + costs
+Selected: Top n_keep chromosomes + costs
 Parents: Binary strings of selected chromosomes
 Costs: Normalised costs of chromosomes
 Probs: Cumulative probabilities for chromosomes
 Pairs: Pairs of parents
-new_pop: Newly generated chromosomes
+chromosomes: Newly generated chromosomes
 """
-
 import random
 import math
 
-chromosomes = [(3,4),(2,8),(4,7),(2,9)] #Student Number
-for i in range(len(chromosomes)):
-  chromosomes.append( (chromosomes[i][1],chromosomes[i][0],) )
 
 def cost(chromosome):
   x = chromosome[0]
   y = chromosome[1] 
   return (-10*x**2 + 7*x*y - 7 * y**2 - 4)  #Cost Function
 
+def generate_inital_chromosomes(length, max, min, num = 8):
+  return [ [ int(random.uniform(min,max)) for j in range(length)] for i in range(num)]
 
-ranked = sorted(list(zip(chromosomes, list(map(cost,chromosomes)))), key = lambda c:c[1])
+def rank_chromosomes(cost, chromosomes):
+  costs = list(map(cost, chromosomes))
+  ranked  = sorted( list(zip(chromosomes,costs)), key = lambda c:c[1])
+  chromosomes = list(map(lambda x:x[0], ranked))
+  return chromosomes, costs
 
-n_keep = 4
-selected = ranked[:n_keep]
-weight = ranked[n_keep][1]
+def natural_selection(ranked, n_keep):
+  return ranked[:n_keep], ranked[n_keep:] 
 
-precision = 5
-bin_low = -7 #Lower point of range
-bin_high = 14
-bin_value = (bin_high - bin_low) / (2**precision-1) #Range of numbers
-def encode(pair):
-  x_val = round( (pair[0] - bin_low)/bin_value )  
-  x = bin(x_val)[2:].rjust(precision,'0')
-  y_val = round( (pair[1] - bin_low)/bin_value )  
-  y = bin(y_val)[2:].rjust(precision,'0')
-  return x+y
-
-def decode(chromosome):
-  x = round(int(chromosome[:precision], 2)*bin_value)  + bin_low
-  y = round(int(chromosome[precision:], 2)*bin_value) + bin_low
-  return (x,y)
-
-parents = list(map(lambda c:encode(c[0]), selected))
-costs = list(map(lambda c:c[1]-weight, selected))
-total = sum(costs)
-
-
-probs = []
-run_sum = 0
-for i in range(n_keep):
+def weight_pairing(chromosomes, costs, normal):
+  """
+  Accepts chromosomes with costs, returns pairs of chromosomes without costs
+  """
+  costs = costs[:len(chromosomes)]
+  costs = list(map(lambda c:c-normal, costs))
+  total = sum(costs)
+  
+  probs = []
+  run_sum = 0
+  for i in range(len(chromosomes)):
     run_sum += costs[i]/total
     probs.append(run_sum)
 
+  pairs = []
+  for i in range(len(chromosomes)):
+    r = random.random()
+    for k in range(len(probs)):
+      if r < probs[k]:
+        pairs.append(chromosomes[k])
+        break 
+  
+  pairs = [pairs[i:i+2] for i in range(0,len(pairs),2)]
+  return pairs
 
-pairs = []
-select_probs = [ 6/19, 1-(6/19)] #Selection Numbers
-for i in range(len(select_probs)):
-  for j in range(n_keep):
-    if select_probs[i] < probs[j]:
-      pairs.append(parents[j])
-      break
+def bin_encode(chromosome, bin_val, min_val, precision):
+  ret = ""
+  for g in chromosome:
+    val = round( (g - min_val)/bin_val )  
+    ret+= bin(val)[2:].rjust(precision,'0')
+  return ret
 
-for p in pairs:
-  parents.remove(p)
+def bin_encode_chromosomes(chromosomes, precision, max_val, min_val):
+  bin_val = (max_val - min_val) / (2**precision-1) #Range of numbers
 
-if len(parents) > 2:
-  print("Same parent picked")
-  pairs.extend(random.sample(parents,2))
-else:
-  pairs.extend(parents)
+  bin_chromosomes = [ bin_encode(c, bin_val, min_val, precision) for c in chromosomes]
+  return bin_chromosomes
 
-pairs = [pairs[i:i+2] for i in range(0,len(pairs),2)]
-split = [round(9/2), round(5/2)] #Crossover Points
+def bin_decode(chromosome, bin_val, min_val, precision):
+  ret = []
+  for idx in range(0,len(chromosome), precision):
+    g = int(chromosome[idx:idx+precision], 2)
+    ret.append(round(g*bin_val)+min_val)
+  return ret
 
-new_pop = []
-for i in range(len(split)):
-  a = pairs[i][0]
-  b = pairs[i][1]
+def bin_encode_chromosomes(chromosomes, precision, max_val, min_val):
+  bin_val = (max_val - min_val) / (2**precision-1) #Range of numbers
 
-  new_pop.append(a)
-  new_pop.append(b)
-  new_pop.append(a[:split[i]] + b[split[i]:])
-  new_pop.append(b[:split[i]] + a[split[i]:])
+  bin_chromosomes = [ bin_encode(c, bin_val, min_val, precision) for c in chromosomes]
+  return bin_chromosomes
+
+def one_point_crossover(pairs):
+  length = len(pairs[0]) -1
+
+  children = []
+  for (a,b) in pairs:
+    split = int(random.random()*length)
+    children.append(a[:split] + b[split:])
+    children.append(b[:split] + a[split:])
+
+  return children  
+
+def mutate(chromosomes, mutation_val):
+  size = len(chromosomes[0])
+  mut_bits = random.sample(range (0,len(chromosomes)*size), mutation_val)
 
 
-mutation_rate = 0.25
-n_bits = 3
-pop = len(new_pop)
-size = len(new_pop[0])
-mutation = math.floor(mutation_rate * pop * n_bits)
-mut_bits = random.sample(range (0,pop*size), mutation)
+  for bit in mut_bits: #To highlight bits, c is chromsome number, pos is index in chromsome
+    pos = math.floor(bit % size)
+    c = math.floor(bit / size)
+    b = chromosomes[c]
+    chromosomes[c] = b[:pos] + ('1' if b[pos]=='0' else '0') + b[pos+1:]
+
+  return chromosomes  
 
 
-for bit in mut_bits: #To highlight bits, c is chromsome number, pos is index in chromsome
-  pos = math.floor(bit % size)
-  c = math.floor(bit / size)
-  b = new_pop[c]
-  new_pop[c] = b[:pos] + ('1' if b[pos]=='0' else '0') + b[pos+1:]
+
+def main(cost_func, chromosome_length, max_val, min_val, **options):
+  chromosomes = generate_inital_chromosomes(chromosome_length, max_val, min_val)
+
+  precision = 5
+  n_keep = 4
+  mutation_rate = 0.25
+  n_bits = 3
+  mutation = math.floor(mutation_rate * len(chromosomes) * n_bits)
+
+
+  ranked, costs = rank_chromosomes(cost_func, chromosomes)  
+  parents, discarded = natural_selection(ranked, n_keep)
+  
+  parents = bin_encode_chromosomes(parents, precision, max_val, min_val)
+  pairs = weight_pairing(parents, costs, costs[n_keep])
+  children = one_point_crossover(pairs)
+
+  chromosomes = parents + children
+  chromosomes = mutate(chromosomes, mutation)
+
+  print(chromosomes)
+
+main(cost, 2, 0, 10)
+
+
+
+
+
 
 
 
