@@ -17,26 +17,33 @@ def cost(chromosome):
   y = chromosome[1] 
   return (-10*x**2 + 7*x*y - 7 * y**2 - 4)  #Cost Function
 
-def generate_inital_chromosomes(length, max, min, num = 8):
-  return [ [ int(random.uniform(min,max)) for j in range(length)] for i in range(num)]
+def generate_inital_chromosomes(length, max, min, pop_size):
+  """
+  Generates pop_size sequences of integers between min and max, each of given length.
+  """
+  return [ [ int(random.uniform(min,max)) for j in range(length)] for i in range(pop_size)]
 
 def rank_chromosomes(cost, chromosomes):
+  """
+  Sorted the given chromosomes ascending according to the given function. Returns the sorted chromosomes and their respective function values.
+  """
   costs = list(map(cost, chromosomes))
   ranked  = sorted( list(zip(chromosomes,costs)), key = lambda c:c[1])
-  chromosomes = list(map(lambda x:x[0], ranked))
-  return chromosomes, costs
+  return list(zip(*ranked))
 
-def natural_selection(ranked, n_keep):
-  return ranked[:n_keep], ranked[n_keep:] 
+def natural_selection(chromosomes, n_keep):
+  """
+  Splits the given chromosomes into lists of sized n_keep, len(chromosomes)-n_keep and returns both
+  """
+  return chromosomes[:n_keep], chromosomes[n_keep:] 
 
 def weight_pairing(chromosomes, costs, normal):
   """
-  Accepts chromosomes with costs, returns pairs of chromosomes without costs
+  Given a list of chromosomes and their assosciated costs, pairs them using random weighted pairing.
   """
-  costs = costs[:len(chromosomes)]
   costs = list(map(lambda c:c-normal, costs))
   total = sum(costs)
-  
+
   probs = []
   run_sum = 0
   for i in range(len(chromosomes)):
@@ -55,6 +62,11 @@ def weight_pairing(chromosomes, costs, normal):
   return pairs
 
 def bin_encode(chromosome, bin_val, min_val, precision):
+  """
+  Encodes the given list of numbers as a binary string, using the given precision.
+
+  bin_val = (max_val - min_val) / (2**precision-1)
+  """
   ret = ""
   for g in chromosome:
     val = round( (g - min_val)/bin_val )  
@@ -62,25 +74,42 @@ def bin_encode(chromosome, bin_val, min_val, precision):
   return ret
 
 def bin_encode_chromosomes(chromosomes, precision, max_val, min_val):
+  """
+  Encodes the given chromosomes to binary strings, using the given values.
+  """
   bin_val = (max_val - min_val) / (2**precision-1) #Range of numbers
 
   bin_chromosomes = [ bin_encode(c, bin_val, min_val, precision) for c in chromosomes]
   return bin_chromosomes
 
 def bin_decode(chromosome, bin_val, min_val, precision):
+  """
+  Decodes the given binary string to a list of numbers, using the given precision.
+
+  bin_val = (max_val - min_val) / (2**precision-1)
+  """
   ret = []
   for idx in range(0,len(chromosome), precision):
     g = int(chromosome[idx:idx+precision], 2)
     ret.append(round(g*bin_val)+min_val)
   return ret
 
-def bin_encode_chromosomes(chromosomes, precision, max_val, min_val):
+def bin_decode_chromosomes(chromosomes, precision, max_val, min_val):
+  """
+  Decodes the given binary chromosomes to real numbers, using the given values.
+  
+  """
+
   bin_val = (max_val - min_val) / (2**precision-1) #Range of numbers
 
-  bin_chromosomes = [ bin_encode(c, bin_val, min_val, precision) for c in chromosomes]
+  bin_chromosomes = [ bin_decode(c, bin_val, min_val, precision) for c in chromosomes]
   return bin_chromosomes
 
 def one_point_crossover(pairs):
+  """
+  Generates offspring using the given pairs via one point crossovers. The point for each crossover is determined randomly.
+  """
+
   length = len(pairs[0]) -1
 
   children = []
@@ -92,6 +121,10 @@ def one_point_crossover(pairs):
   return children  
 
 def mutate(chromosomes, mutation_val):
+  """
+  Mutates 'mutation_val' bits in the given chromosomes
+  """
+
   size = len(chromosomes[0])
   mut_bits = random.sample(range (0,len(chromosomes)*size), mutation_val)
 
@@ -106,29 +139,52 @@ def mutate(chromosomes, mutation_val):
 
 
 
-def main(cost_func, chromosome_length, max_val, min_val, **options):
-  chromosomes = generate_inital_chromosomes(chromosome_length, max_val, min_val)
+def main(cost_func, max_val = 100, min_val = -100, chromosome_length = 2, precision = 5, population_size = 10,  n_keep = 4, mutation_rate = 0.25, mutation_bits = 3):
+  """
+  Given cost_func, returns a minimized solution. This solution is not guaranteed to be optimal.
 
-  precision = 5
-  n_keep = 4
-  mutation_rate = 0.25
-  n_bits = 3
-  mutation = math.floor(mutation_rate * len(chromosomes) * n_bits)
+  cost_func: function to be optimised. Return type must be comparable, and must accept a list of integers with len=chromosome_length (2 by default)
+  max_val: maximum value permitted in the solution
+  min_val: minimum value permitted in the solution
+  chromosome_length: number of variables to be optimised
+  precision: decimal precision for each variable
 
+  population_size: number of chromosomes in the inital population. May change throughout the run of the algorithm
+  n_keep: If using Xrate selection, the number of chromosomes that are selected for mating. Must be > 0.
 
-  ranked, costs = rank_chromosomes(cost_func, chromosomes)  
-  parents, discarded = natural_selection(ranked, n_keep)
-  
-  parents = bin_encode_chromosomes(parents, precision, max_val, min_val)
-  pairs = weight_pairing(parents, costs, costs[n_keep])
-  children = one_point_crossover(pairs)
+  mutation_rate = %chance that an individual bit is mutated. Must be > 0
+  mutation_bits = number of genes in a chromosome that are up for mutation  
+  """
+  chromosomes = generate_inital_chromosomes(chromosome_length, max_val, min_val, population_size)
+  mutation = math.floor(mutation_rate * population_size * mutation_bits)
 
-  chromosomes = parents + children
-  chromosomes = mutate(chromosomes, mutation)
+  x = 0
+  while x < 5:
+    
+    ranked, costs = rank_chromosomes(cost_func, chromosomes)  
+    if costs[n_keep] == costs[0]:
+      break
+    parents, discarded = natural_selection(ranked, n_keep)
 
-  print(chromosomes)
+    parents = bin_encode_chromosomes(parents, precision, max_val, min_val)
 
-main(cost, 2, 0, 10)
+    
+    pairs = weight_pairing(parents, costs[:len(parents)], costs[n_keep])
+    children = one_point_crossover(pairs)
+    chromosomes = parents + children
+
+    if len(chromosomes)!= population_size:
+        population_size = len(chromosomes)      
+        mutation = math.floor(mutation_rate * population_size * mutation_bits)
+
+    chromosomes = mutate(chromosomes, mutation)
+
+    chromosomes = bin_decode_chromosomes(chromosomes, precision, max_val, min_val)
+
+  return chromosomes[0]
+
+val = main(cost)
+print(val)
 
 
 
